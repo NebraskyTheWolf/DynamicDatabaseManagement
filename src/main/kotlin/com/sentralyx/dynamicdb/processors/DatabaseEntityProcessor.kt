@@ -17,6 +17,8 @@ import javax.lang.model.element.TypeElement
 @SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity")
 class DatabaseEntityProcessor : AbstractProcessor() {
 
+    private val isDebug = System.getenv("dynamicdb.debug").toBoolean()
+
     /**
      * Processes the annotations by generating database models for each annotated class.
      *
@@ -28,7 +30,16 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val elementsAnnotatedWith = roundEnv.getElementsAnnotatedWith(DatabaseEntity::class.java)
 
         for (element in elementsAnnotatedWith) {
+
+            if (isDebug) {
+                println(element.simpleName)
+            }
+
             if (element.kind.isClass) {
+                if (isDebug) {
+                    println("${element.simpleName} (Pass)")
+                }
+
                 generateDatabaseModel(element)
             }
         }
@@ -71,12 +82,21 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
         val connection = MySQLConnector.getConnection()
 
+        if (isDebug) {
+            println("Testing connection...\n")
+            println(connection.isValid(1000))
+        }
+
         checkAndCreateTable(connection, tableName, element)
 
         val primaryKeyFieldSpec = fieldSpecs.firstOrNull { (propertySpec, _) ->
             val fieldElement = fields.find { it.simpleName.toString() == propertySpec.name }
             fieldElement?.getAnnotation(PrimaryKey::class.java) != null
         }?.first ?: throw IllegalArgumentException("No field annotated with @PrimaryKey found in $className")
+
+        if (isDebug) {
+            println("Creating class '${className}DatabaseModel'")
+        }
 
         val classBuilder = TypeSpec.classBuilder("${className}DatabaseModel")
             .primaryConstructor(
@@ -91,6 +111,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .addFunction(generateSelectFunction(className, tableName, primaryKeyFieldSpec))
             .addFunction(generateUpdateFunction(className, tableName, fieldSpecs, primaryKeyFieldSpec))
             .addFunction(generateDeleteFunction(className, tableName, primaryKeyFieldSpec))
+
+        if (isDebug) {
+            println("Class Builder: \n")
+            println(classBuilder.toString())
+        }
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
             .addType(classBuilder.build())
@@ -125,6 +150,12 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("println(%P)", "Error inserting $className: ${'$'}{e.message}")
             addStatement("throw e")
             addStatement("}")
+        }
+
+        if (isDebug) {
+            println(insertQuery + "\n")
+            println(code.toString())
+            println()
         }
 
         return FunSpec.builder("insert")
@@ -162,6 +193,12 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("println(%P)", "Error selecting $className: ${'$'}{e.message}")
             addStatement("throw e")
             addStatement("}")
+        }
+
+        if (isDebug) {
+            println(selectQuery + "\n")
+            println(code.toString())
+            println()
         }
 
         return FunSpec.builder("selectById")
@@ -202,6 +239,13 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}")
         }
 
+        if (isDebug) {
+            println(setClause + "\n")
+            println(updateQuery + "\n")
+            println(code.toString())
+            println()
+        }
+
         return FunSpec.builder("update")
             .addParameter("obj", ClassName("", className))
             .addCode(code)
@@ -230,6 +274,12 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("println(%P)", "Error deleting $className: ${'$'}{e.message}")
             addStatement("throw e")
             addStatement("}")
+        }
+
+        if (isDebug) {
+            println(deleteQuery + "\n")
+            println(code.toString())
+            println()
         }
 
         return FunSpec.builder("deleteById")
