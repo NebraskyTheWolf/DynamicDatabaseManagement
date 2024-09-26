@@ -5,20 +5,15 @@ import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
 import com.sentralyx.dynamicdb.annotations.DatabaseEntity
 import com.sentralyx.dynamicdb.annotations.PrimaryKey
-import com.sentralyx.dynamicdb.connector.MySQLConnector
 import java.sql.SQLException
 import javax.annotation.processing.*
 import javax.lang.model.element.Element
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.TypeElement
-import javax.lang.model.type.TypeKind
 
 @SupportedSourceVersion(javax.lang.model.SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity")
 class DatabaseEntityProcessor : AbstractProcessor() {
-
-    private val isDebug = System.getenv("dynamicdb.debug").toBoolean()
-
     /**
      * Processes the annotations by generating database models for each annotated class.
      *
@@ -30,16 +25,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val elementsAnnotatedWith = roundEnv.getElementsAnnotatedWith(DatabaseEntity::class.java)
 
         for (element in elementsAnnotatedWith) {
-
-            if (isDebug) {
-                println(element.simpleName)
-            }
-
             if (element.kind.isClass) {
-                if (isDebug) {
-                    println("${element.simpleName} (Pass)")
-                }
-
                 generateDatabaseModel(element)
             }
         }
@@ -85,10 +71,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             fieldElement?.getAnnotation(PrimaryKey::class.java) != null
         }?.first ?: throw IllegalArgumentException("No field annotated with @PrimaryKey found in $className")
 
-        if (isDebug) {
-            println("Creating class '${className}DatabaseModel'")
-        }
-
         val classBuilder = TypeSpec.classBuilder("${className}DatabaseModel")
             .primaryConstructor(
                 FunSpec.constructorBuilder()
@@ -98,22 +80,16 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                     .build()
             )
             .addProperties(fieldSpecs.map { it.first })
-            .addFunction(generateInsertFunction(className, tableName, fieldSpecs))
-            .addFunction(generateSelectFunction(className, tableName, primaryKeyFieldSpec, fieldSpecs))
-            .addFunction(generateUpdateFunction(className, tableName, fieldSpecs, primaryKeyFieldSpec))
-            .addFunction(generateDeleteFunction(className, tableName, primaryKeyFieldSpec))
-
-        if (isDebug) {
-            println("Class Builder: \n")
-            println(classBuilder.toString())
-        }
+            .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
+            .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
+            .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
+            .addFunction(generateDeleteFunction(packageName, className, tableName, primaryKeyFieldSpec))
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
-            .addImport(MySQLConnector::class.java)
+            .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
             .addType(classBuilder.build())
-            .build()
 
-        kotlinFile.writeTo(processingEnv.filer)
+        kotlinFile.build().writeTo(processingEnv.filer)
     }
 
     /**
@@ -124,11 +100,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @param fields The fields of the database model.
      * @return A function specification for inserting data into the database.
      */
-    private fun generateInsertFunction(className: String, tableName: String, fields: List<Pair<PropertySpec, String>>): FunSpec {
+    private fun generateInsertFunction(packageName: String, className: String, tableName: String, fields: List<Pair<PropertySpec, String>>): FunSpec {
         val insertQuery = "INSERT INTO $tableName (${fields.joinToString { it.first.name }}) VALUES (${fields.joinToString { "?" }})"
 
         val code = buildCodeBlock {
-            addStatement("val connection = MySQLConnector.getConnection()")
+            addStatement("val connection = getConnection()")
             addStatement("val statement = connection.prepareStatement(%P)", insertQuery)
 
             fields.forEachIndexed { index, (property, _) ->
@@ -139,7 +115,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         }
 
         return FunSpec.builder("insert")
-            .addParameter("obj", ClassName("", className))
+            .addParameter("obj", ClassName(packageName, className))
             .addCode(code)
             .throws(SQLException::class)
             .build()
@@ -153,11 +129,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @param primaryKeyField The primary key field of the database model.
      * @return A function specification for selecting data from the database.
      */
-    private fun generateSelectFunction(className: String, tableName: String, primaryKeyField: PropertySpec, fields: List<Pair<PropertySpec, String>>): FunSpec {
+    private fun generateSelectFunction(packageName: String, className: String, tableName: String, primaryKeyField: PropertySpec, fields: List<Pair<PropertySpec, String>>): FunSpec {
         val selectQuery = "SELECT ${fields.joinToString { it.first.name }} FROM $tableName WHERE ${primaryKeyField.name} = ?"
 
         val code = buildCodeBlock {
-            addStatement("val connection = MySQLConnector.getConnection()")
+            addStatement("val connection = getConnection()")
             addStatement("val preparedStatement = connection.prepareStatement(%P)", selectQuery)
             addStatement("preparedStatement.setObject(1, id)")
             addStatement("val resultSet = preparedStatement.executeQuery()")
@@ -171,7 +147,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                         LONG -> "getLong"
                         DOUBLE -> "getDouble"
                         SHORT -> "getShort"
-                        else -> when (MySQLType.valueOf(it.second)) {
+                        else -> when (MySQLType.valueOf(it.second.split("(")[0])) {
                             MySQLType.INT -> "getInt"
                             MySQLType.VARCHAR -> "getString"
                             MySQLType.BOOL, MySQLType.TINYINT -> "getBoolean"
@@ -180,13 +156,16 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                             MySQLType.TIMESTAMP -> "getTimestamp"
                             MySQLType.DECIMAL -> "getDouble"
                             MySQLType.JSON -> "getString"
+
+                            // TODO: Add more available types.
+
                             else -> "getObject"
                         }
                     }
 
                     "${it.first.name} = resultSet.${getter}(\"${it.first.name}\")"
                 }
-                addStatement("return %T($constructorArgs)", ClassName("", className))
+                addStatement("return %T($constructorArgs)", ClassName(packageName, className))
             endControlFlow()
 
             addStatement("return null")
@@ -194,7 +173,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
         return FunSpec.builder("selectById")
             .addParameter("id", Any::class) // Specify the type based on your primary key type
-            .returns(ClassName("", className).copy(nullable = true))
+            .returns(ClassName(packageName, className).copy(nullable = true))
             .addCode(code)
             .throws(SQLException::class)
             .build()
@@ -209,12 +188,12 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @param primaryKeyField The primary key field of the database model.
      * @return A function specification for updating data in the database.
      */
-    private fun generateUpdateFunction(className: String, tableName: String, fields: List<Pair<PropertySpec, String>>, primaryKeyField: PropertySpec): FunSpec {
+    private fun generateUpdateFunction(packageName: String, className: String, tableName: String, fields: List<Pair<PropertySpec, String>>, primaryKeyField: PropertySpec): FunSpec {
         val setClause = fields.joinToString { "${it.first.name} = ?" }
         val updateQuery = "UPDATE $tableName SET $setClause WHERE ${primaryKeyField.name} = ?"
 
         val code = buildCodeBlock {
-            addStatement("val connection = MySQLConnector.getConnection()")
+            addStatement("val connection = getConnection()")
             addStatement("val preparedStatement = connection.prepareStatement(%P)", updateQuery)
 
             fields.forEachIndexed { index, (property, _) ->
@@ -226,7 +205,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         }
 
         return FunSpec.builder("update")
-            .addParameter("obj", ClassName("", className))
+            .addParameter("obj", ClassName(packageName, className))
             .addCode(code)
             .throws(SQLException::class)
             .build()
@@ -240,11 +219,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @param primaryKeyField The primary key field of the database model.
      * @return A function specification for deleting data from the database.
      */
-    private fun generateDeleteFunction(className: String, tableName: String, primaryKeyField: PropertySpec): FunSpec {
+    private fun generateDeleteFunction(packageName: String, className: String, tableName: String, primaryKeyField: PropertySpec): FunSpec {
         val deleteQuery = "DELETE FROM $tableName WHERE ${primaryKeyField.name} = ?"
 
         val code = buildCodeBlock {
-            addStatement("val connection = MySQLConnector.getConnection()")
+            addStatement("val connection = getConnection()")
             addStatement("connection.prepareStatement(%P).use { preparedStatement ->", deleteQuery)
                 addStatement("preparedStatement.setObject(1, id)")
                 addStatement("preparedStatement.executeUpdate()")
