@@ -72,13 +72,8 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         }?.first ?: throw IllegalArgumentException("No field annotated with @PrimaryKey found in $className")
 
         val classBuilder = TypeSpec.classBuilder("${className}DatabaseModel")
-            .primaryConstructor(
-                FunSpec.constructorBuilder()
-                    .addParameters(fieldSpecs.map { (prop, _) ->
-                        ParameterSpec.builder(prop.name, prop.type).build()
-                    })
-                    .build()
-            )
+            .primaryConstructor(FunSpec.constructorBuilder().build())
+            .addProperties(fieldSpecs.map { it.first })
             .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
