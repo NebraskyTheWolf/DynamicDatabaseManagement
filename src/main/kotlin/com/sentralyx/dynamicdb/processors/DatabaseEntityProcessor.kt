@@ -79,7 +79,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                     })
                     .build()
             )
-            .addProperties(fieldSpecs.map { it.first })
             .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))

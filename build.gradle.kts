@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.sentralyx.dynamicdb"
-version = "1.0.19"
+version = "1.0.21"
 
 kapt {
     generateStubs = true
