@@ -6,10 +6,11 @@ plugins {
 }
 
 group = "com.sentralyx.dynamicdb"
-version = "1.0-SNAPSHOT"
+version = "1.0.4"
 
 kapt {
     generateStubs = true
+    annotationProcessor( "${group}.processors.DatabaseEntityProcessor")
 }
 
 java {
@@ -41,22 +42,14 @@ tasks.withType<JavaCompile>().configureEach {
     options.annotationProcessorPath = configurations.kapt.get()
 }
 
-tasks.register<Copy>("generateProcessorFile") {
+tasks.named<Jar>("jar") {
     val processorClassName = "${group}.processors.DatabaseEntityProcessor"
 
-    doLast {
-        val resourceDir = "${buildDir}/generated/resources/META-INF/services/"
-        val file = File(resourceDir, "javax.annotation.processing.Processor")
-        file.parentFile.mkdirs()
-        file.writeText(processorClassName)
-    }
-}
+    val resourceDir = "${buildDir}/generated/resources/META-INF/services/"
+    val file = File(resourceDir, "javax.annotation.processing.Processor")
+    file.parentFile.mkdirs()
+    file.writeText(processorClassName)
 
-tasks.named("processResources") {
-    dependsOn("generateProcessorFile")
-}
-
-tasks.named<Jar>("jar") {
     from("${buildDir}/generated/resources") {
         include("META-INF/services/**")
     }
@@ -73,7 +66,7 @@ publishing {
 
             groupId = "com.sentralyx"
             artifactId = "dynamicdb"
-            version = "1.0.0"
+            version = version
 
             artifact(tasks["javadocJar"])
             artifact(tasks["sourcesJar"])
@@ -83,7 +76,7 @@ publishing {
     repositories {
         maven {
             name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/NebraskyTheWolf/dynamicdb")
+            url = uri("https://maven.pkg.github.com/NebraskyTheWolf/DynamicDatabaseManagement")
             credentials {
                 username = project.findProperty("github.actor") as String? ?: ""
                 password = project.findProperty("github.token") as String? ?: ""
