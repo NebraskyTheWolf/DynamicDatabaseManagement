@@ -80,15 +80,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                 .build() to "$sqlType(${size})"
         }
 
-        val connection = MySQLConnector.getConnection()
-
-        if (isDebug) {
-            println("Testing connection...\n")
-            println(connection.isValid(1000))
-        }
-
-        checkAndCreateTable(connection, tableName, element)
-
         val primaryKeyFieldSpec = fieldSpecs.firstOrNull { (propertySpec, _) ->
             val fieldElement = fields.find { it.simpleName.toString() == propertySpec.name }
             fieldElement?.getAnnotation(PrimaryKey::class.java) != null
@@ -108,7 +99,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             )
             .addProperties(fieldSpecs.map { it.first })
             .addFunction(generateInsertFunction(className, tableName, fieldSpecs))
-            .addFunction(generateSelectFunction(className, tableName, primaryKeyFieldSpec))
+            .addFunction(generateSelectFunction(className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(className, tableName, fieldSpecs, primaryKeyFieldSpec))
             .addFunction(generateDeleteFunction(className, tableName, primaryKeyFieldSpec))
 
@@ -122,7 +113,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .build()
 
         kotlinFile.writeTo(processingEnv.filer)
-        connection.close()
     }
 
     /**
@@ -137,25 +127,14 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val insertQuery = "INSERT INTO $tableName (${fields.joinToString { it.first.name }}) VALUES (${fields.joinToString { "?" }})"
 
         val code = buildCodeBlock {
-            addStatement("try {")
             addStatement("val connection = MySQLConnector.getConnection()")
-            addStatement("connection.prepareStatement(%P).use { preparedStatement ->", insertQuery)
+            addStatement("val statement = connection.prepareStatement(%P)", insertQuery)
 
             fields.forEachIndexed { index, (property, _) ->
-                addStatement("preparedStatement.setObject(${index + 1}, obj.${property.name})")
+                addStatement("statement.setObject(${index + 1}, obj.${property.name})")
             }
 
-            addStatement("preparedStatement.executeUpdate()")
-            addStatement("} catch (e: SQLException) {")
-            addStatement("println(%P)", "Error inserting $className: ${'$'}{e.message}")
-            addStatement("throw e")
-            addStatement("}")
-        }
-
-        if (isDebug) {
-            println(insertQuery + "\n")
-            println(code.toString())
-            println()
+            addStatement("statement.executeUpdate()")
         }
 
         return FunSpec.builder("insert")
@@ -173,32 +152,18 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @param primaryKeyField The primary key field of the database model.
      * @return A function specification for selecting data from the database.
      */
-    private fun generateSelectFunction(className: String, tableName: String, primaryKeyField: PropertySpec): FunSpec {
-        val selectQuery = "SELECT * FROM $tableName WHERE ${primaryKeyField.name} = ?"
+    private fun generateSelectFunction(className: String, tableName: String, primaryKeyField: PropertySpec, fields: List<Pair<PropertySpec, String>>): FunSpec {
+        val selectQuery = "SELECT ${fields.joinToString { it.first.name }} FROM $tableName WHERE ${primaryKeyField.name} = ?"
 
         val code = buildCodeBlock {
-            addStatement("try {")
             addStatement("val connection = MySQLConnector.getConnection()")
-            addStatement("connection.prepareStatement(%P).use { preparedStatement ->", selectQuery)
+            addStatement("val preparedStatement = connection.prepareStatement(%P)", selectQuery)
             addStatement("preparedStatement.setObject(1, id)")
-            addStatement("preparedStatement.executeQuery().use { resultSet ->")
-
+            addStatement("val resultSet = preparedStatement.executeQuery()")
             beginControlFlow("if (resultSet.next())")
-            val fields = listOf(primaryKeyField) // Adjust to include more fields if necessary
-            val constructorArgs = fields.joinToString(", ") { "resultSet.getObject(\"${it.name}\")" }
-            addStatement("return %T($constructorArgs)", ClassName("", className))
+                val constructorArgs = fields.joinToString(", ") { "${it.first.name} = resultSet.getObject(\"${it.first.name}\")" }
+                addStatement("return %T($constructorArgs)", ClassName("", className))
             endControlFlow()
-            addStatement("}")
-            addStatement("} catch (e: SQLException) {")
-            addStatement("println(%P)", "Error selecting $className: ${'$'}{e.message}")
-            addStatement("throw e")
-            addStatement("}")
-        }
-
-        if (isDebug) {
-            println(selectQuery + "\n")
-            println(code.toString())
-            println()
         }
 
         return FunSpec.builder("selectById")
@@ -223,9 +188,8 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val updateQuery = "UPDATE $tableName SET $setClause WHERE ${primaryKeyField.name} = ?"
 
         val code = buildCodeBlock {
-            addStatement("try {")
             addStatement("val connection = MySQLConnector.getConnection()")
-            addStatement("connection.prepareStatement(%P).use { preparedStatement ->", updateQuery)
+            addStatement("val preparedStatement = connection.prepareStatement(%P)", updateQuery)
 
             fields.forEachIndexed { index, (property, _) ->
                 addStatement("preparedStatement.setObject(${index + 1}, obj.${property.name})")
@@ -233,17 +197,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
             addStatement("preparedStatement.setObject(${fields.size + 1}, obj.${primaryKeyField.name})")
             addStatement("preparedStatement.executeUpdate()")
-            addStatement("} catch (e: SQLException) {")
-            addStatement("println(%P)", "Error updating $className: ${'$'}{e.message}")
-            addStatement("throw e")
-            addStatement("}")
-        }
-
-        if (isDebug) {
-            println(setClause + "\n")
-            println(updateQuery + "\n")
-            println(code.toString())
-            println()
         }
 
         return FunSpec.builder("update")
@@ -265,21 +218,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val deleteQuery = "DELETE FROM $tableName WHERE ${primaryKeyField.name} = ?"
 
         val code = buildCodeBlock {
-            addStatement("try {")
             addStatement("val connection = MySQLConnector.getConnection()")
             addStatement("connection.prepareStatement(%P).use { preparedStatement ->", deleteQuery)
-            addStatement("preparedStatement.setObject(1, id)")
-            addStatement("preparedStatement.executeUpdate()")
-            addStatement("} catch (e: SQLException) {")
-            addStatement("println(%P)", "Error deleting $className: ${'$'}{e.message}")
-            addStatement("throw e")
+                addStatement("preparedStatement.setObject(1, id)")
+                addStatement("preparedStatement.executeUpdate()")
             addStatement("}")
-        }
-
-        if (isDebug) {
-            println(deleteQuery + "\n")
-            println(code.toString())
-            println()
         }
 
         return FunSpec.builder("deleteById")
