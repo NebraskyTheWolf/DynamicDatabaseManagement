@@ -1,6 +1,8 @@
 package com.sentralyx.dynamicdb.processors
 
 enum class MySQLType(val sqlType: String) {
+    JSON("JSON"),
+    BOOL("BOOL"),
     TINYINT("TINYINT"),
     SMALLINT("SMALLINT"),
     MEDIUMINT("MEDIUMINT"),

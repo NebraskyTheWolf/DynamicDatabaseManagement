@@ -1,5 +1,6 @@
 package com.sentralyx.dynamicdb.processors
 
+import com.mysql.cj.MysqlType
 import com.sentralyx.dynamicdb.annotations.ColumnType
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
@@ -161,9 +162,33 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("preparedStatement.setObject(1, id)")
             addStatement("val resultSet = preparedStatement.executeQuery()")
             beginControlFlow("if (resultSet.next())")
-                val constructorArgs = fields.joinToString(", ") { "${it.first.name} = resultSet.getObject(\"${it.first.name}\")" }
+                val constructorArgs = fields.joinToString(", ") {
+                    val schemaType = MySQLType.isValidType(it.second)
+                    if (schemaType) {
+                        val getter = when (MySQLType.valueOf(it.second)) {
+                            MySQLType.INT -> "getInt"
+                            MySQLType.VARCHAR -> "getString"
+                            MySQLType.BOOL, MySQLType.TINYINT -> "getBoolean"
+                            MySQLType.FLOAT -> "getFloat"
+                            MySQLType.BIGINT -> "getLong"
+                            MySQLType.TIMESTAMP -> "getTimestamp"
+                            MySQLType.DECIMAL -> "getDouble"
+                            MySQLType.JSON -> "getString"
+
+                            // TODO: Add more types...
+
+                            else -> "getObject"
+                        }
+
+                        "${it.first.name} = resultSet.${getter}(\"${it.first.name}\")"
+                    } else {
+                        "${it.first.name} = resultSet.getObject(\"${it.first.name}\")"
+                    }
+                }
                 addStatement("return %T($constructorArgs)", ClassName("", className))
             endControlFlow()
+
+            addStatement("return null")
         }
 
         return FunSpec.builder("selectById")
