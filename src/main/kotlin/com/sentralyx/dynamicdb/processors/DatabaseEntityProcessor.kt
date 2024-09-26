@@ -1,18 +1,17 @@
 package com.sentralyx.dynamicdb.processors
 
-import com.mysql.cj.MysqlType
 import com.sentralyx.dynamicdb.annotations.ColumnType
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
 import com.sentralyx.dynamicdb.annotations.DatabaseEntity
 import com.sentralyx.dynamicdb.annotations.PrimaryKey
-import com.sentralyx.dynamicdb.connector.checkAndCreateTable
 import com.sentralyx.dynamicdb.connector.MySQLConnector
 import java.sql.SQLException
 import javax.annotation.processing.*
 import javax.lang.model.element.Element
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.TypeElement
+import javax.lang.model.type.TypeKind
 
 @SupportedSourceVersion(javax.lang.model.SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity")
@@ -110,6 +109,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         }
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
+            .addImport(MySQLConnector::class.java)
             .addType(classBuilder.build())
             .build()
 
@@ -163,9 +163,15 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("val resultSet = preparedStatement.executeQuery()")
             beginControlFlow("if (resultSet.next())")
                 val constructorArgs = fields.joinToString(", ") {
-                    val schemaType = MySQLType.isValidType(it.second)
-                    if (schemaType) {
-                        val getter = when (MySQLType.valueOf(it.second)) {
+                    val getter = when (it.first.type) {
+                        INT -> "getInt"
+                        STRING -> "getString"
+                        BOOLEAN -> "getBoolean"
+                        FLOAT -> "getFloat"
+                        LONG -> "getLong"
+                        DOUBLE -> "getDouble"
+                        SHORT -> "getShort"
+                        else -> when (MySQLType.valueOf(it.second)) {
                             MySQLType.INT -> "getInt"
                             MySQLType.VARCHAR -> "getString"
                             MySQLType.BOOL, MySQLType.TINYINT -> "getBoolean"
@@ -174,16 +180,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                             MySQLType.TIMESTAMP -> "getTimestamp"
                             MySQLType.DECIMAL -> "getDouble"
                             MySQLType.JSON -> "getString"
-
-                            // TODO: Add more types...
-
                             else -> "getObject"
                         }
-
-                        "${it.first.name} = resultSet.${getter}(\"${it.first.name}\")"
-                    } else {
-                        "${it.first.name} = resultSet.getObject(\"${it.first.name}\")"
                     }
+
+                    "${it.first.name} = resultSet.${getter}(\"${it.first.name}\")"
                 }
                 addStatement("return %T($constructorArgs)", ClassName("", className))
             endControlFlow()
