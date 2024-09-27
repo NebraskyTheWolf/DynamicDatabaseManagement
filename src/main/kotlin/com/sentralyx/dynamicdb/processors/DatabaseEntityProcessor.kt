@@ -34,6 +34,38 @@ class DatabaseEntityProcessor : AbstractProcessor() {
     }
 
     /**
+     * Generates an extension function for the annotated class, which provides access
+     * to the corresponding database model class.
+     *
+     * This extension function allows the annotated class to directly access the
+     * generated database model without explicitly creating an instance. It adds a
+     * `model()` function to the class, which returns an instance of the generated
+     * `${className}DatabaseModel`.
+     *
+     * For example, if `User` is annotated with `@DatabaseEntity`, this function will
+     * generate the following extension function:
+     *
+     * ```
+     * fun User.model(): UserDatabaseModel {
+     *     return UserDatabaseModel()
+     * }
+     * ```
+     *
+     * This method can then be used to interact with the database model for the class.
+     *
+     * @param className The name of the annotated class.
+     * @param packageName The package name where the annotated class is located.
+     * @return A [FunSpec] representing the extension function for the database model.
+     */
+    private fun generateModelExtensionFunction(className: String, packageName: String): FunSpec {
+        return FunSpec.builder("${className.lowercase()}Model")
+            .receiver(ClassName(packageName, className))
+            .returns(ClassName(packageName, "${className}DatabaseModel"))
+            .addStatement("return ${className}DatabaseModel()")
+            .build()
+    }
+
+    /**
      * Generates a database model for the specified entity class.
      *
      * This method creates a Kotlin data class representing the database model,
@@ -82,6 +114,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
             .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
             .addType(classBuilder.build())
+            .addFunction(generateModelExtensionFunction(className, packageName))
 
         kotlinFile.build().writeTo(processingEnv.filer)
     }
