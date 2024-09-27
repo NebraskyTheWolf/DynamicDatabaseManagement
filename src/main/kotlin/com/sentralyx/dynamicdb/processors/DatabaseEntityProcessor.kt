@@ -407,7 +407,18 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val className = (method.enclosingElement as TypeElement).simpleName.toString()
         val packageName = processingEnv.elementUtils.getPackageOf(method).toString()
 
-        val funSpec = generateQueryExecutionFunction(packageName, methodName, query, method)
+        val fields = method.enclosedElements.filter { it.kind == ElementKind.FIELD }
+
+        val parameterSpec = fields.map { field ->
+            val fieldName = field.simpleName.toString()
+            val fieldType = field.asType().asTypeName()
+
+            ParameterSpec.builder(fieldName, fieldType)
+                .addModifiers(KModifier.PRIVATE)
+                .build()
+        }
+
+        val funSpec = generateQueryExecutionFunction(packageName, methodName, query, method, parameterSpec)
 
         val fileSpec = FileSpec.builder(packageName, "${className}QueryExecutor")
             .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
@@ -421,7 +432,8 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         packageName: String,
         methodName: String,
         query: String,
-        method: Element
+        method: Element,
+        parameterSpec: List<ParameterSpec>
     ): FunSpec {
         val parameters = method as? ExecutableElement ?: throw IllegalArgumentException("Element is not a method")
 
@@ -441,6 +453,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         }
 
         return FunSpec.builder(methodName)
+            .addParameters(parameterSpec)
             .addModifiers(KModifier.PUBLIC)
             .returns(
                 List::class.asTypeName().parameterizedBy(

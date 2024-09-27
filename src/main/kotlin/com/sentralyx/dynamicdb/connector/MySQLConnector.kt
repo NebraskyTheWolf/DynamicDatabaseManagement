@@ -2,13 +2,13 @@ package com.sentralyx.dynamicdb.connector
 
 import com.sentralyx.dynamicdb.DatabaseConnectionException
 import com.sentralyx.dynamicdb.DatabaseNotConnectedException
+import org.apache.commons.dbcp2.BasicDataSource
 import java.sql.Connection
-import java.sql.Driver
-import java.sql.DriverManager
-import java.sql.SQLException
+import javax.sql.DataSource
 
 object MySQLConnector {
-    private var connection: Connection? = null
+
+    private var dataSource: DataSource? = null
 
     /**
      * Establishes a connection to the database using the provided credentials.
@@ -21,33 +21,30 @@ object MySQLConnector {
      */
     @Throws(DatabaseConnectionException::class)
     fun connect(url: String, username: String, password: String) {
-        try {
-            // Check if connection is already established
-            if (connection == null || connection!!.isClosed) {
-                // Register appropriate driver based on URL
-                val driver = when {
-                    url.startsWith("jdbc:mysql://") -> {
-                        Class.forName("com.mysql.cj.jdbc.Driver") // Load MySQL driver
-                    }
-                    url.startsWith("jdbc:mariadb://") -> {
-                        Class.forName("org.mariadb.jdbc.Driver") // Load MariaDB driver
-                    }
-                    else -> {
-                        throw DatabaseConnectionException("Unsupported database URL: $url")
-                    }
-                }
-
-                if (DriverManager.getDriver(url) == null)
-                    DriverManager.registerDriver(driver.newInstance() as Driver?)
-
-                // Establish connection
-                connection = DriverManager.getConnection(url, username, password)
+        val driver = when {
+            url.startsWith("jdbc:mysql://") -> {
+                "com.mysql.cj.jdbc.Driver"
             }
-        } catch (e: SQLException) {
-            throw DatabaseConnectionException("Failed to connect to the database: ${e.message}", e)
-        } catch (e: ClassNotFoundException) {
-            throw DatabaseConnectionException("JDBC Driver not found: ${e.message}", e)
+            url.startsWith("jdbc:mariadb://") -> {
+                "org.mariadb.jdbc.Driver"
+            }
+            else -> {
+                throw DatabaseConnectionException("Unsupported database URL: $url")
+            }
         }
+
+
+        // Set a JDBC/MySQL connection
+        val dataSource = BasicDataSource()
+
+        dataSource.driverClassName = driver
+        dataSource.url = url
+        dataSource.username = username
+        dataSource.password = password
+        dataSource.initialSize = 1
+        dataSource.maxTotal = 12
+
+        this.dataSource = dataSource
     }
 
     /**
@@ -57,22 +54,7 @@ object MySQLConnector {
      */
     @Throws(DatabaseNotConnectedException::class)
     fun getConnection(): Connection {
-        return connection ?: throw DatabaseNotConnectedException("No active database connection found.")
-    }
-
-    /**
-     * Closes the database connection.
-     *
-     * @throws DatabaseConnectionException If disconnection fails.
-     */
-    @Throws(DatabaseConnectionException::class)
-    fun disconnect() {
-        try {
-            connection?.close()
-            connection = null // Clear the connection after closing
-        } catch (e: SQLException) {
-            throw DatabaseConnectionException("Failed to disconnect from the database: ${e.message}", e)
-        }
+        return dataSource!!.connection ?: throw DatabaseNotConnectedException("No active database connection found.")
     }
 
     /**
@@ -81,13 +63,6 @@ object MySQLConnector {
      * @return true if connected, false otherwise.
      */
     fun isConnected(): Boolean {
-        return connection != null && !connection!!.isClosed
-    }
-
-    /**
-     * Resets the connection to null, allowing for a fresh connection attempt.
-     */
-    fun resetConnection() {
-        connection = null
+        return !getConnection().isClosed
     }
 }

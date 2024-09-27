@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.sentralyx.dynamicdb"
-version = "1.1.29"
+version = "1.1.31"
 
 kapt {
     generateStubs = true
@@ -31,7 +31,9 @@ dependencies {
     kapt("com.squareup:kotlinpoet:1.11.0")
     implementation("com.squareup:kotlinpoet:1.11.0")
 
+    implementation("org.apache.commons:commons-dbcp2:2.1.1")
     implementation("mysql:mysql-connector-java:8.0.30")
+
     implementation("org.mariadb.jdbc:mariadb-java-client:3.1.3")
 }
 
