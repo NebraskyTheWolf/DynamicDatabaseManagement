@@ -118,6 +118,12 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                     .addParameter("currentUser", ClassName(packageName, className))
                     .build()
             )
+            .addProperty(
+                PropertySpec.builder("currentUser", ClassName(packageName, className))
+                    .initializer("currentUser")
+                    .mutable(true)
+                    .build()
+            )
             .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateSelectSelfFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
@@ -226,7 +232,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val code = buildCodeBlock {
             addStatement("val connection = getConnection()")
             addStatement("val preparedStatement = connection.prepareStatement(%P)", selectQuery)
-            addStatement("preparedStatement.setInt(1, this.user.id)")
+            addStatement("preparedStatement.setInt(1, this.currentUser.id)")
             addStatement("val resultSet = preparedStatement.executeQuery()")
             beginControlFlow("if (resultSet.next())")
             val constructorArgs = fields.joinToString(", ") {
@@ -333,7 +339,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val code = buildCodeBlock {
             addStatement("val connection = getConnection()")
             addStatement("connection.prepareStatement(%P).use { preparedStatement ->", deleteQuery)
-            addStatement("preparedStatement.setInt(1, this.user.id)")
+            addStatement("preparedStatement.setInt(1, this.currentUser.id)")
             addStatement("preparedStatement.executeUpdate()")
             addStatement("}")
         }
