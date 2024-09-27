@@ -5,6 +5,7 @@ import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
 import com.sentralyx.dynamicdb.annotations.DatabaseEntity
 import com.sentralyx.dynamicdb.annotations.PrimaryKey
+import com.sentralyx.dynamicdb.annotations.Query
 import java.sql.SQLException
 import javax.annotation.processing.*
 import javax.lang.model.element.Element
@@ -12,7 +13,7 @@ import javax.lang.model.element.ElementKind
 import javax.lang.model.element.TypeElement
 
 @SupportedSourceVersion(javax.lang.model.SourceVersion.RELEASE_8)
-@SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity")
+@SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity", "com.sentralyx.dynamicdb.annotations.Query")
 class DatabaseEntityProcessor : AbstractProcessor() {
     /**
      * Processes the annotations by generating database models for each annotated class.
@@ -29,6 +30,14 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                 generateDatabaseModel(element)
             }
         }
+
+        val methodsAnnotatedWithQuery = roundEnv.getElementsAnnotatedWith(Query::class.java)
+        for (method in methodsAnnotatedWithQuery) {
+            if (method.kind == ElementKind.METHOD) {
+                generateQueryMethod(method)
+            }
+        }
+
 
         return true
     }
@@ -61,7 +70,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         return FunSpec.builder("${className.lowercase()}Model")
             .receiver(ClassName(packageName, className))
             .returns(ClassName(packageName, "${className}DatabaseModel"))
-            .addStatement("return ${className}DatabaseModel()")
+            .addStatement("return ${className}DatabaseModel(this)")
             .build()
     }
 
@@ -104,12 +113,17 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         }?.first ?: throw IllegalArgumentException("No field annotated with @PrimaryKey found in $className")
 
         val classBuilder = TypeSpec.classBuilder("${className}DatabaseModel")
-            .primaryConstructor(FunSpec.constructorBuilder().build())
-            //.addProperties(fieldSpecs.map { it.first })
+            .primaryConstructor(
+                FunSpec.constructorBuilder()
+                    .addParameter("currentUser", ClassName(packageName, className))
+                    .build()
+            )
             .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
+            .addFunction(generateSelectSelfFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
             .addFunction(generateDeleteFunction(packageName, className, tableName, primaryKeyFieldSpec))
+            .addFunction(generateDeleteUserFunction(packageName, className, tableName, primaryKeyFieldSpec))
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
             .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
@@ -206,6 +220,55 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .build()
     }
 
+    private fun generateSelectSelfFunction(packageName: String, className: String, tableName: String, primaryKeyField: PropertySpec, fields: List<Pair<PropertySpec, String>>): FunSpec {
+        val selectQuery = "SELECT ${fields.joinToString { it.first.name }} FROM $tableName WHERE ${primaryKeyField.name} = ?"
+
+        val code = buildCodeBlock {
+            addStatement("val connection = getConnection()")
+            addStatement("val preparedStatement = connection.prepareStatement(%P)", selectQuery)
+            addStatement("preparedStatement.setInt(1, this.user.id)")
+            addStatement("val resultSet = preparedStatement.executeQuery()")
+            beginControlFlow("if (resultSet.next())")
+            val constructorArgs = fields.joinToString(", ") {
+                val getter = when (it.first.type) {
+                    INT -> "getInt"
+                    STRING -> "getString"
+                    BOOLEAN -> "getBoolean"
+                    FLOAT -> "getFloat"
+                    LONG -> "getLong"
+                    DOUBLE -> "getDouble"
+                    SHORT -> "getShort"
+                    else -> when (MySQLType.valueOf(it.second.split("(")[0])) {
+                        MySQLType.INT -> "getInt"
+                        MySQLType.VARCHAR -> "getString"
+                        MySQLType.BOOL, MySQLType.TINYINT -> "getBoolean"
+                        MySQLType.FLOAT -> "getFloat"
+                        MySQLType.BIGINT -> "getLong"
+                        MySQLType.TIMESTAMP -> "getTimestamp"
+                        MySQLType.DECIMAL -> "getDouble"
+                        MySQLType.JSON -> "getString"
+
+                        // TODO: Add more available types.
+
+                        else -> "getObject"
+                    }
+                }
+
+                "${it.first.name} = resultSet.${getter}(\"${it.first.name}\")"
+            }
+            addStatement("return %T($constructorArgs)", ClassName(packageName, className))
+            endControlFlow()
+
+            addStatement("return null")
+        }
+
+        return FunSpec.builder("select")
+            .returns(ClassName(packageName, className).copy(nullable = true))
+            .addCode(code)
+            .throws(SQLException::class)
+            .build()
+    }
+
     /**
      * Generates an update function for the database model.
      *
@@ -261,6 +324,72 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .addParameter("id", Any::class) // Specify the type based on your primary key type
             .addCode(code)
             .throws(SQLException::class)
+            .build()
+    }
+
+    private fun generateDeleteUserFunction(packageName: String, className: String, tableName: String, primaryKeyField: PropertySpec): FunSpec {
+        val deleteQuery = "DELETE FROM $tableName WHERE ${primaryKeyField.name} = ?"
+
+        val code = buildCodeBlock {
+            addStatement("val connection = getConnection()")
+            addStatement("connection.prepareStatement(%P).use { preparedStatement ->", deleteQuery)
+            addStatement("preparedStatement.setInt(1, this.user.id)")
+            addStatement("preparedStatement.executeUpdate()")
+            addStatement("}")
+        }
+
+        return FunSpec.builder("delete")
+            .addCode(code)
+            .throws(SQLException::class)
+            .build()
+    }
+
+    /**
+     * Generates boilerplate code for executing the custom query specified by @Query.
+     * This allows the user to implement logic to handle the ResultSet.
+     */
+    private fun generateQueryMethod(method: Element) {
+        val methodName = method.simpleName.toString()
+        val queryAnnotation = method.getAnnotation(Query::class.java)
+        val query = queryAnnotation.value
+
+        val className = (method.enclosingElement as TypeElement).simpleName.toString()
+        val packageName = processingEnv.elementUtils.getPackageOf(method).toString()
+
+        // Generate the function that includes the query execution logic
+        val funSpec = generateQueryExecutionFunction(methodName, query)
+
+        // Write the generated function to a Kotlin file
+        val fileSpec = FileSpec.builder(packageName, "${className}QueryExecutor")
+            .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
+            .addFunction(funSpec)
+            .build()
+
+        fileSpec.writeTo(processingEnv.filer)
+    }
+
+    /**
+     * Generates the Kotlin function that sets up the query execution but leaves result processing
+     * for the user to implement.
+     *
+     * @param methodName The name of the method to generate.
+     * @param query The SQL query to execute.
+     * @return The [FunSpec] representing the generated query function.
+     */
+    private fun generateQueryExecutionFunction(methodName: String, query: String): FunSpec {
+        val codeBlock = buildCodeBlock {
+            addStatement("val connection = getConnection()")
+            addStatement("val preparedStatement = connection.prepareStatement(%P)", query)
+
+            addStatement("// Set parameters using preparedStatement.setXXX()")
+            addStatement("val resultSet = preparedStatement.executeQuery()")
+
+            addStatement("// Process resultSet and implement your logic here")
+        }
+
+        return FunSpec.builder(methodName)
+            .addModifiers(KModifier.PUBLIC)
+            .addCode(codeBlock)
             .build()
     }
 }

@@ -16,22 +16,62 @@
 
 ---
 
+## Installation
+
+# Gradle x Kotlin DSL
+
+```kotlin
+plugins {
+    kotlin("jvm") version "1.9.21"
+    kotlin("kapt") version "1.9.21"
+}
+
+group = "com.example.test"
+version = "1.0-SNAPSHOT"
+
+repositories {
+    mavenCentral()
+    maven {
+        name = "GitHubPackages"
+        url = uri("https://maven.pkg.github.com/NebraskyTheWolf/DynamicDatabaseManagement")
+        credentials {
+            username = project.findProperty("github.actor") as String? ?: ""
+            password = project.findProperty("github.token") as String? ?: ""
+        }
+    }
+}
+
+kapt { /*T ODO: Your configuration */ }
+
+dependencies {
+    implementation(kotlin("stdlib"))
+
+    implementation("com.sentralyx:dynamicdb:1.0.23")
+    kapt("com.sentralyx:dynamicdb:1.0.23")
+
+    implementation("mysql:mysql-connector-java:8.0.30")
+}
+
+kotlin {
+    jvmToolchain(8)
+}
+```
+
+---
+
 ## Getting Started
 1. Define Your Data Class
 
 To start using the library, create a Kotlin data class representing your database entity. Utilize the provided annotations for configuration.
 
 ```kotlin
-import com.sentralyx.dynamicdb.annotations.DatabaseEntity
-import com.sentralyx.dynamicdb.annotations.ColumnType
-import com.sentralyx.dynamicdb.annotations.PrimaryKey
-
 @DatabaseEntity(tableName = "users")
 data class User(
     @PrimaryKey
     val id: Int,
     
     @ColumnType(type = ColumnType.VARCHAR, size = 50)
+    @Unique
     val name: String,
     
     @ColumnType(type = ColumnType.INT)
@@ -51,17 +91,17 @@ fun main() {
     val user = User(id = 1, name = "Alice", age = 30)
 
     // Insert user into the database
-    userDatabaseModel.insert(user)
+    user.userModel().insert(user)
 
     // Select user from the database
-    val retrievedUser = userDatabaseModel.selectById(1)
+    val retrievedUser = user.userModel().selectById(1)
     println(retrievedUser)
 
     // Update user
-    userDatabaseModel.update(user.copy(age = 31))
+    user.userModel().update(user.copy(age = 31))
 
     // Delete user
-    userDatabaseModel.delete(1)
+    user.userModel().delete(1)
 }
 ```
 
