@@ -171,7 +171,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}") // This will automatically close the connection
         }
 
-        return FunSpec.builder("insert")
+        return FunSpec.builder("insert${className}")
             .addParameter("obj", ClassName(packageName, className))
             .addCode(code)
             .throws(SQLException::class)
@@ -236,7 +236,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}") // This will automatically close the connection
         }
 
-        return FunSpec.builder("selectById")
+        return FunSpec.builder("select${className}ById")
             .addParameter("id", Any::class) // Specify the type based on your primary key type
             .returns(ClassName(packageName, className).copy(nullable = true))
             .addCode(code)
@@ -294,7 +294,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}") // This will automatically close the connection
         }
 
-        return FunSpec.builder("select")
+        return FunSpec.builder("select${className}")
             .returns(ClassName(packageName, className).copy(nullable = true))
             .addCode(code)
             .throws(SQLException::class)
@@ -333,7 +333,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}") // This will automatically close the connection
         }
 
-        return FunSpec.builder("update")
+        return FunSpec.builder("update${className}")
             .addParameter("obj", ClassName(packageName, className))
             .addCode(code)
             .throws(SQLException::class)
@@ -365,7 +365,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}") // This will automatically close the connection
         }
 
-        return FunSpec.builder("deleteById")
+        return FunSpec.builder("delete${className}ById")
             .addParameter("id", Any::class) // Specify the type based on your primary key type
             .addCode(code)
             .throws(SQLException::class)
@@ -389,7 +389,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("}") // This will automatically close the connection
         }
 
-        return FunSpec.builder("deleteUser")
+        return FunSpec.builder("delete${className}")
             .addCode(code)
             .throws(SQLException::class)
             .build()
