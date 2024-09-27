@@ -73,7 +73,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
         val classBuilder = TypeSpec.classBuilder("${className}DatabaseModel")
             .primaryConstructor(FunSpec.constructorBuilder().build())
-            .addProperties(fieldSpecs.map { it.first })
+            //.addProperties(fieldSpecs.map { it.first })
             .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
