@@ -3,15 +3,16 @@ package com.sentralyx.dynamicdb.connector
 import com.sentralyx.dynamicdb.DatabaseConnectionException
 import com.sentralyx.dynamicdb.DatabaseNotConnectedException
 import java.sql.Connection
+import java.sql.Driver
 import java.sql.DriverManager
 import java.sql.SQLException
-
 
 object MySQLConnector {
     private var connection: Connection? = null
 
     /**
      * Establishes a connection to the database using the provided credentials.
+     * Automatically selects the correct JDBC driver for MySQL or MariaDB based on the URL.
      *
      * @param url The database URL.
      * @param username The username for the database.
@@ -21,11 +22,31 @@ object MySQLConnector {
     @Throws(DatabaseConnectionException::class)
     fun connect(url: String, username: String, password: String) {
         try {
+            // Check if connection is already established
             if (connection == null || connection!!.isClosed) {
+                // Register appropriate driver based on URL
+                val driver = when {
+                    url.startsWith("jdbc:mysql://") -> {
+                        Class.forName("com.mysql.cj.jdbc.Driver") // Load MySQL driver
+                    }
+                    url.startsWith("jdbc:mariadb://") -> {
+                        Class.forName("org.mariadb.jdbc.Driver") // Load MariaDB driver
+                    }
+                    else -> {
+                        throw DatabaseConnectionException("Unsupported database URL: $url")
+                    }
+                }
+
+                if (DriverManager.getDriver(url) == null)
+                    DriverManager.registerDriver(driver.newInstance() as Driver?)
+
+                // Establish connection
                 connection = DriverManager.getConnection(url, username, password)
             }
         } catch (e: SQLException) {
             throw DatabaseConnectionException("Failed to connect to the database: ${e.message}", e)
+        } catch (e: ClassNotFoundException) {
+            throw DatabaseConnectionException("JDBC Driver not found: ${e.message}", e)
         }
     }
 
