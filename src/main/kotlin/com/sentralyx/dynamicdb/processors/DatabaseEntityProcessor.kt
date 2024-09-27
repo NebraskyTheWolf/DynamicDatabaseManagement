@@ -130,6 +130,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
             .addFunction(generateDeleteFunction(packageName, className, tableName, primaryKeyFieldSpec))
             .addFunction(generateDeleteUserFunction(packageName, className, tableName, primaryKeyFieldSpec))
+            .addFunction(generateCreateTableFunction(packageName, className, tableName, fieldSpecs))
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
             .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
@@ -396,6 +397,37 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         return FunSpec.builder(methodName)
             .addModifiers(KModifier.PUBLIC)
             .addCode(codeBlock)
+            .build()
+    }
+
+    // Add the following method in the DatabaseEntityProcessor class
+
+    /**
+     * Generates a create table function for the database model.
+     *
+     * @param className The name of the class to create the table for.
+     * @param tableName The name of the database table.
+     * @param fields The fields of the database model.
+     * @return A function specification for creating the database table.
+     */
+    private fun generateCreateTableFunction(packageName: String, className: String, tableName: String, fields: List<Pair<PropertySpec, String>>): FunSpec {
+        val createTableQuery = StringBuilder("CREATE TABLE IF NOT EXISTS $tableName (")
+        createTableQuery.append(fields.joinToString(", ") {
+            "${it.first.name} ${it.second}"
+        })
+        createTableQuery.append(")")
+
+        val code = buildCodeBlock {
+            addStatement("val connection = getConnection()")
+            addStatement("val statement = connection.createStatement()")
+            addStatement("statement.executeUpdate(%P)", createTableQuery.toString())
+            addStatement("statement.close()")
+            addStatement("connection.close()")
+        }
+
+        return FunSpec.builder("createTable")
+            .addCode(code)
+            .throws(SQLException::class)
             .build()
     }
 }
