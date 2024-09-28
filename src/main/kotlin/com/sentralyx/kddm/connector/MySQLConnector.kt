@@ -1,7 +1,7 @@
-package com.sentralyx.dynamicdb.connector
+package com.sentralyx.kddm.connector
 
-import com.sentralyx.dynamicdb.DatabaseConnectionException
-import com.sentralyx.dynamicdb.DatabaseNotConnectedException
+import com.sentralyx.kddm.DatabaseConnectionException
+import com.sentralyx.kddm.DatabaseNotConnectedException
 import org.apache.commons.dbcp2.BasicDataSource
 import java.sql.Connection
 import javax.sql.DataSource

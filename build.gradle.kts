@@ -5,8 +5,8 @@ plugins {
     id("signing")
 }
 
-group = "com.sentralyx.dynamicdb"
-version = "1.1.50"
+group = "com.sentralyx.kddm"
+version = "2.4.52"
 
 kapt {
     generateStubs = true
@@ -76,7 +76,7 @@ publishing {
     repositories {
         maven {
             name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/NebraskyTheWolf/DynamicDatabaseManagement")
+            url = uri("https://maven.pkg.github.com/NebraskyTheWolf/kDDM")
             credentials {
                 username = project.findProperty("github.actor") as String? ?: ""
                 password = project.findProperty("github.token") as String? ?: ""

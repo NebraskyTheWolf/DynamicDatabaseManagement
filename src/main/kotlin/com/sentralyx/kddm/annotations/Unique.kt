@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
 /**
  * Annotation that indicates a field must contain unique values within a database table.

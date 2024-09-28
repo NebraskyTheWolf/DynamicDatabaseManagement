@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.processors
+package com.sentralyx.kddm.processors
 
 enum class MySQLType(val sqlType: String, val isSizeable: Boolean = false, val maxSize: Int = 0) {
     JSON("JSON"),

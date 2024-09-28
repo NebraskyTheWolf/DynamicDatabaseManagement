@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
 @Target(AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.SOURCE)

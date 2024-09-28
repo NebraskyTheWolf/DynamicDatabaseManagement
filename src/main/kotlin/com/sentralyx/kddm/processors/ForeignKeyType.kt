@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.processors
+package com.sentralyx.kddm.processors
 
 enum class ForeignKeyType {
     SET_NULL,

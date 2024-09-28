@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
 /**
  * Annotation that identifies a field as the primary key of a database table.

@@ -1,6 +1,6 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
-import com.sentralyx.dynamicdb.processors.ForeignKeyType
+import com.sentralyx.kddm.processors.ForeignKeyType
 
 @Target(AnnotationTarget.FIELD)
 @Retention(AnnotationRetention.SOURCE)

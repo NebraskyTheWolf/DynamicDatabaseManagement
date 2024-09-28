@@ -1,11 +1,8 @@
-package com.sentralyx.dynamicdb.processors
+package com.sentralyx.kddm.processors
 
-import com.sentralyx.dynamicdb.annotations.*
+import com.sentralyx.kddm.annotations.*
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
-import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
-import java.io.File
-import java.sql.ResultSet
 import java.sql.SQLException
 import java.util.*
 import javax.annotation.processing.*
@@ -15,7 +12,7 @@ import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
 
 @SupportedSourceVersion(javax.lang.model.SourceVersion.RELEASE_8)
-@SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity", "com.sentralyx.dynamicdb.annotations.Query")
+@SupportedAnnotationTypes("com.sentralyx.kddm.annotations.DatabaseEntity", "com.sentralyx.kddm.annotations.Query")
 class DatabaseEntityProcessor : AbstractProcessor() {
 
     private val version: String = loadVersion()
@@ -126,6 +123,16 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                 .build() to returnType
         }
 
+        val primaryKey = fields.map { field ->
+            val fieldName = field.simpleName.toString()
+            val hasPrimaryKey = field.getAnnotation(PrimaryKey::class.java) != null
+
+            if (hasPrimaryKey)
+                fieldName
+            else
+                ""
+        }
+
         val primaryKeyFieldSpec = fieldSpecs.firstOrNull { (propertySpec, _) ->
             val fieldElement = fields.find { it.simpleName.toString() == propertySpec.name }
             fieldElement?.getAnnotation(PrimaryKey::class.java) != null
@@ -143,7 +150,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                     .mutable(true)
                     .build()
             )
-            .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs))
+            .addFunction(generateInsertFunction(packageName, className, tableName, fieldSpecs, primaryKey.firstOrNull()))
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateSelectSelfFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
@@ -152,7 +159,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .addFunction(generateCreateTableFunction(tableName = tableName, element = element))
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
-            .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
+            .addImport("com.sentralyx.kddm.connector.MySQLConnector", "getConnection")
             .addType(classBuilder.build())
             .addFileComment("""
                 /**
@@ -187,16 +194,20 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         packageName: String,
         className: String,
         tableName: String,
-        fields: List<Pair<PropertySpec, String>>
+        fields: List<Pair<PropertySpec, String>>,
+        primaryKeyName: String?
     ): FunSpec {
-        val insertQuery =
-            "INSERT INTO $tableName (${fields.joinToString { it.first.name }}) VALUES (${fields.joinToString { "?" }})"
+        val filteredFields = fields.filterNot { (property, _) ->
+            property.name == primaryKeyName
+        }
+
+        val insertQuery = "INSERT INTO $tableName (${filteredFields.joinToString { it.first.name }}) VALUES (${filteredFields.joinToString { "?" }})"
 
         val code = buildCodeBlock {
             addStatement("getConnection().use { connection ->")
             addStatement("    val statement = connection.prepareStatement(%P)", insertQuery)
 
-            fields.forEachIndexed { index, (property, _) ->
+            filteredFields.forEachIndexed { index, (property, _) ->
                 addStatement("    statement.setObject(${index + 1}, obj.${property.name})")
             }
 
@@ -459,11 +470,10 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             returnType = UNIT
         )
 
-        parameterSpec.plus(ParameterSpec("block", lambdaType))
-
         val funSpec = FunSpec.builder(methodName)
             .addParameters(parameterSpec)
             .addModifiers(KModifier.PUBLIC)
+            .addParameter("block", lambdaType)
             .returns(Unit::class)
             .addCode(codeBlock)
             .build()

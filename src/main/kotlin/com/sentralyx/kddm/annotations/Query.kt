@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
 /**
  * Annotation for defining custom SQL queries.

@@ -1,6 +1,6 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
-import com.sentralyx.dynamicdb.processors.MySQLType
+import com.sentralyx.kddm.processors.MySQLType
 
 /**
  * Annotation that specifies the SQL type and size constraints for a field in a database entity.

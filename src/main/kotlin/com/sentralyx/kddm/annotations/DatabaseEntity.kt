@@ -1,4 +1,4 @@
-package com.sentralyx.dynamicdb.annotations
+package com.sentralyx.kddm.annotations
 
 /**
  * Annotation that marks a data class as a database entity.
