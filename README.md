@@ -3,11 +3,9 @@
 ![Kotlin Version](https://img.shields.io/badge/Kotlin-1.5%2B-blue.svg) ![License](https://img.shields.io/badge/License-MIT-green.svg)
 
 ## Overview
-
 **Dynamic Database Management Library** is a Kotlin library designed to streamline the interaction with SQL databases by automatically generating database models based on Kotlin data classes. This library leverages custom annotations to simplify CRUD (Create, Read, Update, Delete) operations while ensuring robust error handling and resource management.
 
 ## Key Features
-
 - **Dynamic Query Generation**: Automatically generates SQL queries based on annotated Kotlin data classes.
 - **Custom Annotations**: Use annotations like `@DatabaseEntity`, `@PrimaryKey`, and `@ColumnType` for easy configuration of database schemas.
 - **Automatic Resource Management**: Uses Kotlin's resource management capabilities to ensure database connections and statements are properly closed.
@@ -33,7 +31,7 @@ repositories {
     mavenCentral()
     maven {
         name = "GitHubPackages"
-        url = uri("https://maven.pkg.github.com/NebraskyTheWolf/DynamicDatabaseManagement")
+        url = uri("https://maven.pkg.github.com/NebraskyTheWolf/kDDM")
         credentials {
             username = project.findProperty("github.actor") as String? ?: ""
             password = project.findProperty("github.token") as String? ?: ""
@@ -41,13 +39,13 @@ repositories {
     }
 }
 
-kapt { /*T ODO: Your configuration */ }
+kapt { /*TODO: Your configurations */ }
 
 dependencies {
     implementation(kotlin("stdlib"))
 
-    implementation("com.sentralyx:dynamicdb:1.0.23")
-    kapt("com.sentralyx:dynamicdb:1.0.23")
+    implementation("com.sentralyx:dynamicdb:LATEST")
+    kapt("com.sentralyx:dynamicdb:LATEST")
 
     implementation("mysql:mysql-connector-java:8.0.30")
 }
@@ -65,17 +63,43 @@ kotlin {
 To start using the library, create a Kotlin data class representing your database entity. Utilize the provided annotations for configuration.
 
 ```kotlin
-@DatabaseEntity(tableName = "users")
-data class User(
-    @PrimaryKey
-    val id: Int,
-    
-    @ColumnType(type = ColumnType.VARCHAR, size = 50)
-    @Unique
-    val name: String,
-    
-    @ColumnType(type = ColumnType.INT)
-    val age: Int
+@DatabaseEntity(tableName = "payments")
+data class Payment(
+    @ColumnType(type = MySQLType.INT, size = (11))
+    @PrimaryKey var id: Int,
+
+    @ColumnType(type = MySQLType.VARCHAR, size = (160))
+    @Unique @NotNull var transactionId: String,
+
+    @ColumnType(type = MySQLType.VARCHAR, size = (80))
+    @ForeignKey(
+        targetTable = "customers",
+        targetName = "id",
+        onDelete = ForeignKeyType.CASCADE
+    )
+    @NotNull var customerId: Int,
+
+    @ColumnType(type = MySQLType.VARCHAR, size = (160))
+    @ForeignKey(
+        targetTable = "orders",
+        targetName = "order_id",
+        onDelete = ForeignKeyType.CASCADE
+    )
+    var orderId: String,
+
+    @ColumnType(type = MySQLType.FLOAT, size = (11))
+    @DefaultFloatValue(value = 0f)
+    @NotNull var price: Float,
+
+    @ColumnType(type = MySQLType.VARCHAR, size = (60))
+    @DefaultStringValue(value = "PENDING")
+    var status: String,
+
+    @ColumnType(type = MySQLType.TIMESTAMP)
+    var createdAt: Timestamp,
+
+    @ColumnType(type = MySQLType.TIMESTAMP)
+    var updatedAt: Timestamp
 )
 ```
 
@@ -88,22 +112,29 @@ With the generated model, you can easily perform CRUD operations as shown in the
 
 ```kotlin
 fun main() {
-    val user = User(id = 1, name = "Alice", age = 30)
+    // MySQL and MariaDB is supported.
+    MySQLConnector.connect("jdbc:mariadb://localhost:3306/test", "username", "password")
 
-    // Insert user into the database
-    user.userModel().insert(user)
+    val payment = Payment(
+        id = 1,
+        transactionId = UUID.randomUUID().toString(),
+        customerId = UUID.randomUUID().toString(),
+        orderId = UUID.randomUUID().toString(),
+        status = "PENDING",
+        price = 10.90F,
+        createdAt = Timestamp(System.currentTimeMillis()),
+        updatedAt = Timestamp(System.currentTimeMillis())
+    )
 
-    // Select user from the database
-    val retrievedUser = user.userModel().selectById(1)
-    println(retrievedUser)
+    payment.paymentModel().createTable()
+    payment.paymentModel().insertPayment(payment)
 
-    // Update user
-    user.userModel().update(user.copy(age = 31))
-
-    // Delete user
-    user.userModel().delete(1)
+    val selectedPayment = payment.paymentModel().selectPayment()
+    println(selectedPayment)
 }
 ```
+
+---
 
 ## Custom Annotations
 
@@ -121,24 +152,7 @@ fun main() {
 ### `@PrimaryKey`
 - **Purpose**: Identifies a field as the primary key of the database table.
 
-## Issue Handling
-
-If you encounter any issues while using the library, please follow these steps:
-
-1. **Check Existing Issues**: Before creating a new issue, please check if your problem has already been reported.
-2. **Create a New Issue**: If your issue is not listed, please open a new issue in the repository.
-    - **Title**: Use a clear and concise title for your issue.
-    - **Description**: Provide a detailed description of the problem, including:
-        - Steps to reproduce the issue
-        - Expected behavior
-        - Actual behavior
-        - Any relevant code snippets or error messages
-3. **Label Your Issue**: If applicable, add labels to your issue to categorize it (e.g., bug, enhancement, question).
-4. **Follow Up**: Be responsive to any questions or requests for clarification from maintainers.
-
-## Error Handling
-
-The library provides robust error handling for all database operations. SQL exceptions encountered during operations are caught and can be handled gracefully, allowing developers to maintain control over error management.
+---
 
 ## Contributing
 
@@ -151,9 +165,13 @@ Contributions are highly encouraged! If you want to enhance this library, please
 5. **Push to Your Branch**: Share your changes with the community (`git push origin feature/YourFeature`).
 6. **Open a Pull Request**: Submit your changes for review.
 
+---
+
 ## License
 
 This project is licensed under the MIT License. For more details, see the [LICENSE](LICENSE) file.
+
+---
 
 ## Acknowledgments
 
