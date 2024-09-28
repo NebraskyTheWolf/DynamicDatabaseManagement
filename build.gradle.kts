@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.sentralyx.dynamicdb"
-version = "1.1.44"
+version = "1.1.49"
 
 kapt {
     generateStubs = true
@@ -41,21 +41,18 @@ kotlin {
     jvmToolchain(8)
 }
 
-tasks.withType<JavaCompile>().configureEach {
-    options.annotationProcessorPath = configurations.kapt.get()
+tasks.register("generateVersionProperties") {
+    doLast {
+        val resourcesDir = file("src/main/resources")
+        val propertiesFile = File(resourcesDir, "version.properties")
+
+        resourcesDir.mkdirs()
+        propertiesFile.writeText("version=$version")
+    }
 }
 
-tasks.named<Jar>("jar") {
-    val processorClassName = "${group}.processors.DatabaseEntityProcessor"
-
-    val resourceDir = "${buildDir}/generated/resources/META-INF/services/"
-    val file = File(resourceDir, "javax.annotation.processing.Processor")
-    file.parentFile.mkdirs()
-    file.writeText(processorClassName)
-
-    from("${buildDir}/generated/resources") {
-        include("META-INF/services/**")
-    }
+tasks.named("processResources") {
+    dependsOn("generateVersionProperties")
 }
 
 sourceSets.main {
