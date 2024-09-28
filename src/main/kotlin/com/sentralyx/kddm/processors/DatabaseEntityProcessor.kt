@@ -403,13 +403,21 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("getConnection().use { connection ->")
             addStatement("    connection.prepareStatement(%P).use { preparedStatement ->", deleteQuery)
             addStatement("        preparedStatement.setObject(1, id)")
-            addStatement("        preparedStatement.executeUpdate()")
+            addStatement("        val result = preparedStatement.executeUpdate()")
+            addStatement("        block(result)")
             addStatement("    }")
             addStatement("}")
         }
 
+        val resultSetType = ClassName("java.sql", "ResultSet")
+        val lambdaType = LambdaTypeName.get(
+            parameters = listOf(ParameterSpec.builder("resultSet", resultSetType).build()),
+            returnType = UNIT
+        )
+
         return FunSpec.builder("delete${className}ById")
             .addParameter("id", Any::class)
+            .addParameter("block", lambdaType)
             .addCode(code)
             .throws(SQLException::class)
             .build()
@@ -426,13 +434,21 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("getConnection().use { connection ->")
             addStatement("    connection.prepareStatement(%P).use { preparedStatement ->", deleteQuery)
             addStatement("        preparedStatement.setInt(1, this.currentUser.id)")
-            addStatement("        preparedStatement.executeUpdate()")
+            addStatement("        val result = preparedStatement.executeUpdate()")
+            addStatement("        block(result)")
             addStatement("    }")
             addStatement("}")
         }
 
+        val resultSetType = ClassName("java.sql", "ResultSet")
+        val lambdaType = LambdaTypeName.get(
+            parameters = listOf(ParameterSpec.builder("resultSet", resultSetType).build()),
+            returnType = UNIT
+        )
+
         return FunSpec.builder("delete${className}")
             .addCode(code)
+            .addParameter("block", lambdaType)
             .throws(SQLException::class)
             .build()
     }
@@ -561,19 +577,27 @@ class DatabaseEntityProcessor : AbstractProcessor() {
         val combinedSql = combinedSqlParts.joinToString(", ")
         val sql = "CREATE TABLE `$tableName` ($combinedSql)"
 
+        val lambdaType = LambdaTypeName.get(
+            parameters = listOf(ParameterSpec.builder("result", Boolean::class.java).build()),
+            returnType = UNIT
+        )
+
         val code = buildCodeBlock {
             addStatement("getConnection().use { connection ->")
                 addStatement("  val meta = connection.metaData")
                 addStatement("  val resultSet = meta.getTables(null, null, %S, null)", tableName)
-                beginControlFlow("if (!resultSet.next())")
+                addStatement("  val isNext = resultSet.next()")
+                beginControlFlow("if (!isNext)")
                     addStatement("  connection.createStatement().use { statement ->")
                     addStatement("    statement.executeUpdate(%S)", sql)
                     addStatement("  }")
                 endControlFlow()
+                addStatement("  block(isNext)")
             addStatement("}")
         }
 
         return FunSpec.builder("createTable")
+            .addParameter("block", lambdaType)
             .addCode(code)
             .throws(SQLException::class)
             .build()

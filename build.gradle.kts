@@ -6,10 +6,9 @@ plugins {
 }
 
 group = "com.sentralyx.kddm"
-version = "2.5.52"
+version = "2.5.54"
 
 kapt {
-    generateStubs = true
     annotationProcessor( "${group}.processors.DatabaseEntityProcessor")
 }
 
