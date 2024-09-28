@@ -154,8 +154,8 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .addFunction(generateSelectFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateSelectSelfFunction(packageName, className, tableName, primaryKeyFieldSpec, fieldSpecs))
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
-            .addFunction(generateDeleteFunction(packageName, className, tableName, primaryKeyFieldSpec))
-            .addFunction(generateDeleteUserFunction(packageName, className, tableName, primaryKeyFieldSpec))
+            .addFunction(generateDeleteFunction(className, tableName, primaryKeyFieldSpec))
+            .addFunction(generateDeleteUserFunction(className, tableName, primaryKeyFieldSpec))
             .addFunction(generateCreateTableFunction(tableName = tableName, element = element))
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
@@ -393,7 +393,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @return A function specification for deleting data from the database.
      */
     private fun generateDeleteFunction(
-        packageName: String,
         className: String,
         tableName: String,
         primaryKeyField: PropertySpec
@@ -417,7 +416,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
     }
 
     private fun generateDeleteUserFunction(
-        packageName: String,
         className: String,
         tableName: String,
         primaryKeyField: PropertySpec
@@ -439,6 +437,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .build()
     }
 
+    @OptIn(DelicateKotlinPoetApi::class)
     private fun generateQueryMethod(method: Element) {
         val queryAnnotation = method.getAnnotation(Query::class.java)
         val query = queryAnnotation.value
