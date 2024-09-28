@@ -5,6 +5,7 @@ import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import java.io.File
+import java.sql.ResultSet
 import java.sql.SQLException
 import java.util.*
 import javax.annotation.processing.*
@@ -21,7 +22,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
     private fun loadVersion(): String {
         val properties = Properties()
-        // Use '/' to ensure it's loaded from the root of the classpath
         this.javaClass.classLoader.getResourceAsStream("version.properties")?.use { inputStream ->
             properties.load(inputStream)
         }
@@ -201,7 +201,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             }
 
             addStatement("    statement.executeUpdate()")
-            addStatement("}") // This will automatically close the connection
+            addStatement("}")
         }
 
         return FunSpec.builder("insert${className}")
@@ -266,11 +266,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             endControlFlow()
 
             addStatement("    return null")
-            addStatement("}") // This will automatically close the connection
+            addStatement("}")
         }
 
         return FunSpec.builder("select${className}ById")
-            .addParameter("id", Any::class) // Specify the type based on your primary key type
+            .addParameter("id", Any::class)
             .returns(ClassName(packageName, className).copy(nullable = true))
             .addCode(code)
             .throws(SQLException::class)
@@ -324,7 +324,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             endControlFlow()
 
             addStatement("    return null")
-            addStatement("}") // This will automatically close the connection
+            addStatement("}")
         }
 
         return FunSpec.builder("select${className}")
@@ -363,7 +363,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
             addStatement("    preparedStatement.setObject(${fields.size + 1}, obj.${primaryKeyField.name})")
             addStatement("    preparedStatement.executeUpdate()")
-            addStatement("}") // This will automatically close the connection
+            addStatement("}")
         }
 
         return FunSpec.builder("update${className}")
@@ -395,11 +395,11 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("        preparedStatement.setObject(1, id)")
             addStatement("        preparedStatement.executeUpdate()")
             addStatement("    }")
-            addStatement("}") // This will automatically close the connection
+            addStatement("}")
         }
 
         return FunSpec.builder("delete${className}ById")
-            .addParameter("id", Any::class) // Specify the type based on your primary key type
+            .addParameter("id", Any::class)
             .addCode(code)
             .throws(SQLException::class)
             .build()
@@ -419,7 +419,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             addStatement("        preparedStatement.setInt(1, this.currentUser.id)")
             addStatement("        preparedStatement.executeUpdate()")
             addStatement("    }")
-            addStatement("}") // This will automatically close the connection
+            addStatement("}")
         }
 
         return FunSpec.builder("delete${className}")
@@ -428,77 +428,53 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .build()
     }
 
-    /**
-     * Generates boilerplate code for executing the custom query specified by @Query.
-     * This allows the user to implement logic to handle the ResultSet.
-     */
     private fun generateQueryMethod(method: Element) {
-        val methodName = method.simpleName.toString()
         val queryAnnotation = method.getAnnotation(Query::class.java)
         val query = queryAnnotation.value
 
+        val methodName = method.simpleName.toString()
         val className = (method.enclosingElement as TypeElement).simpleName.toString()
         val packageName = processingEnv.elementUtils.getPackageOf(method).toString()
 
-        val fields = method.enclosedElements.filter { it.kind == ElementKind.FIELD }
-
-        val parameterSpec = fields.map { field ->
-            val fieldName = field.simpleName.toString()
-            val fieldType = field.asType().asTypeName()
-
-            ParameterSpec.builder(fieldName, fieldType)
-                .addModifiers(KModifier.PRIVATE)
-                .build()
-        }
-
-        val funSpec = generateQueryExecutionFunction(packageName, methodName, query, method, parameterSpec)
-
-        val fileSpec = FileSpec.builder(packageName, "${className}QueryExecutor")
-            .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
-            .addFunction(funSpec)
-            .build()
-
-        fileSpec.writeTo(processingEnv.filer)
-    }
-
-    private fun generateQueryExecutionFunction(
-        packageName: String,
-        methodName: String,
-        query: String,
-        method: Element,
-        parameterSpec: List<ParameterSpec>
-    ): FunSpec {
         val parameters = method as? ExecutableElement ?: throw IllegalArgumentException("Element is not a method")
+        val parameterSpec = parameters.parameters.map { param ->
+            ParameterSpec.builder(param.simpleName.toString(), param.asType().asTypeName()).build()
+        }
 
         val codeBlock = buildCodeBlock {
             addStatement("val connection = getConnection()")
             addStatement("val preparedStatement = connection.prepareStatement(%P)", query)
 
             parameters.parameters.forEachIndexed { index, param ->
-                val paramName = param.simpleName.toString()
-                addStatement("preparedStatement.setObject(${index + 1}, $paramName)") // Adjust according to type
+                addStatement("preparedStatement.setObject(${index + 1}, ${param.simpleName})")
             }
 
             addStatement("val resultSet = preparedStatement.executeQuery()")
-
-            addStatement("// Process resultSet and implement your logic here")
-            addStatement("// Example: return a list of mapped objects")
+            addStatement("block(resultSet)")
         }
 
-        return FunSpec.builder(methodName)
+        val resultSetType = ClassName("java.sql", "ResultSet")
+        val lambdaType = LambdaTypeName.get(
+            parameters = listOf(ParameterSpec.builder("resultSet", resultSetType).build()),
+            returnType = UNIT
+        )
+
+        parameterSpec.plus(ParameterSpec("block", lambdaType))
+
+        val funSpec = FunSpec.builder(methodName)
             .addParameters(parameterSpec)
             .addModifiers(KModifier.PUBLIC)
-            .returns(
-                List::class.asTypeName().parameterizedBy(
-                    ClassName(
-                        packageName,
-                        (method.enclosingElement as TypeElement).simpleName.toString()
-                    )
-                )
-            )
+            .returns(Unit::class)
             .addCode(codeBlock)
             .build()
+
+        val fileSpec = FileSpec.builder(packageName, className)
+            .addFunction(funSpec)
+            .build()
+
+        fileSpec.writeTo(processingEnv.filer)
     }
+
 
     // Add the following method in the DatabaseEntityProcessor class
 
