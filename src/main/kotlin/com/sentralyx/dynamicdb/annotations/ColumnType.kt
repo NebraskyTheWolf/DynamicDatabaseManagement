@@ -16,5 +16,5 @@ import com.sentralyx.dynamicdb.processors.MySQLType
 @Retention(AnnotationRetention.RUNTIME)
 annotation class ColumnType(
     val type: MySQLType,
-    val size: Int = 1 // Default size
+    val size: Int = 1
 )
