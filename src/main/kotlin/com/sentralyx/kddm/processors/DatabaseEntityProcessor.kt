@@ -480,6 +480,7 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
         val fileSpec = FileSpec.builder(packageName, className)
             .addFunction(funSpec)
+            .addImport("com.sentralyx.kddm.connector.MySQLConnector", "getConnection")
             .build()
 
         fileSpec.writeTo(processingEnv.filer)
@@ -518,25 +519,25 @@ class DatabaseEntityProcessor : AbstractProcessor() {
 
             val defaultValue = when {
                 field.getAnnotation(DefaultIntValue::class.java) != null -> {
-                    "DEFAULT ${field.getAnnotation(DefaultIntValue::class.java)!!.value}"
+                    "DEFAULT ${field.getAnnotation(DefaultIntValue::class.java).value}"
                 }
                 field.getAnnotation(DefaultStringValue::class.java) != null -> {
-                    "DEFAULT '${field.getAnnotation(DefaultStringValue::class.java)!!.value}'"
+                    "DEFAULT '${field.getAnnotation(DefaultStringValue::class.java).value}'"
                 }
                 field.getAnnotation(DefaultFloatValue::class.java) != null -> {
-                    "DEFAULT ${field.getAnnotation(DefaultFloatValue::class.java)!!.value}"
+                    "DEFAULT ${field.getAnnotation(DefaultFloatValue::class.java).value}"
                 }
                 field.getAnnotation(DefaultDoubleValue::class.java) != null -> {
-                    "DEFAULT ${field.getAnnotation(DefaultDoubleValue::class.java)!!.value}"
+                    "DEFAULT ${field.getAnnotation(DefaultDoubleValue::class.java).value}"
                 }
                 field.getAnnotation(DefaultLongValue::class.java) != null -> {
-                    "DEFAULT ${field.getAnnotation(DefaultLongValue::class.java)!!.value}"
+                    "DEFAULT ${field.getAnnotation(DefaultLongValue::class.java).value}"
                 }
                 field.getAnnotation(DefaultShortValue::class.java) != null -> {
-                    "DEFAULT ${field.getAnnotation(DefaultShortValue::class.java)!!.value}"
+                    "DEFAULT ${field.getAnnotation(DefaultShortValue::class.java).value}"
                 }
                 field.getAnnotation(DefaultBoolValue::class.java) != null -> {
-                    "DEFAULT ${field.getAnnotation(DefaultBoolValue::class.java)!!.value}"
+                    "DEFAULT ${field.getAnnotation(DefaultBoolValue::class.java).value}"
                 }
                 else -> ""
             }

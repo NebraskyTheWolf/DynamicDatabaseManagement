@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.sentralyx.kddm"
-version = "2.4.52"
+version = "2.5.52"
 
 kapt {
     generateStubs = true
@@ -65,7 +65,7 @@ publishing {
             from(components["kotlin"])
 
             groupId = "com.sentralyx"
-            artifactId = "dynamicdb"
+            artifactId = "kddm"
             version = version
 
             artifact(tasks["javadocJar"])
