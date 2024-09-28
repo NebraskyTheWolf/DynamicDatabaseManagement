@@ -1,22 +1,25 @@
 package com.sentralyx.dynamicdb.processors
 
-import com.sentralyx.dynamicdb.annotations.ColumnType
+import com.sentralyx.dynamicdb.annotations.*
 import com.squareup.kotlinpoet.*
 import com.squareup.kotlinpoet.jvm.throws
-import com.sentralyx.dynamicdb.annotations.DatabaseEntity
-import com.sentralyx.dynamicdb.annotations.PrimaryKey
-import com.sentralyx.dynamicdb.annotations.Query
 import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
+import java.sql.Connection
+import java.sql.ResultSet
 import java.sql.SQLException
 import javax.annotation.processing.*
 import javax.lang.model.element.Element
 import javax.lang.model.element.ElementKind
 import javax.lang.model.element.ExecutableElement
 import javax.lang.model.element.TypeElement
+import kotlin.math.max
 
 @SupportedSourceVersion(javax.lang.model.SourceVersion.RELEASE_8)
 @SupportedAnnotationTypes("com.sentralyx.dynamicdb.annotations.DatabaseEntity", "com.sentralyx.dynamicdb.annotations.Query")
 class DatabaseEntityProcessor : AbstractProcessor() {
+
+    private val version: String = "1.1.34"
+
     /**
      * Processes the annotations by generating database models for each annotated class.
      *
@@ -26,7 +29,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      */
     override fun process(annotations: MutableSet<out TypeElement>, roundEnv: RoundEnvironment): Boolean {
         val elementsAnnotatedWith = roundEnv.getElementsAnnotatedWith(DatabaseEntity::class.java)
-
         for (element in elementsAnnotatedWith) {
             if (element.kind.isClass) {
                 generateDatabaseModel(element)
@@ -39,7 +41,6 @@ class DatabaseEntityProcessor : AbstractProcessor() {
                 generateQueryMethod(method)
             }
         }
-
 
         return true
     }
@@ -103,10 +104,18 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             val sqlType = columnType.type.name
             val size = columnType.size
 
+            val returnType = if (columnType.type.isSizeable) {
+                if (size > columnType.type.maxSize)
+                    throw IllegalArgumentException("Field $fieldName value size must be ${columnType.type.maxSize} or lower. Current size ($size)")
+                "$sqlType(${size})"
+            } else {
+                sqlType
+            }
+
             PropertySpec.builder(fieldName, fieldType)
                 .initializer(fieldName)
                 .addModifiers(KModifier.PRIVATE)
-                .build() to "$sqlType(${size})"
+                .build() to returnType
         }
 
         val primaryKeyFieldSpec = fieldSpecs.firstOrNull { (propertySpec, _) ->
@@ -132,12 +141,27 @@ class DatabaseEntityProcessor : AbstractProcessor() {
             .addFunction(generateUpdateFunction(packageName, className, tableName, fieldSpecs, primaryKeyFieldSpec))
             .addFunction(generateDeleteFunction(packageName, className, tableName, primaryKeyFieldSpec))
             .addFunction(generateDeleteUserFunction(packageName, className, tableName, primaryKeyFieldSpec))
-            .addFunction(generateCreateTableFunction(packageName, className, tableName, fieldSpecs))
+            .addFunction(generateCreateTableFunction(tableName = tableName, element = element))
 
         val kotlinFile = FileSpec.builder(packageName, "${className}DatabaseModel")
             .addImport("com.sentralyx.dynamicdb.connector.MySQLConnector", "getConnection")
+            .addImport(ClassName("java.sql", "ResultSet"))
             .addType(classBuilder.build())
             .addFunction(generateModelExtensionFunction(className, packageName))
+            .addBodyComment("""
+                /**
+                 * This class was auto-generated using DynamicDatabaseMenegement Framework
+                 * Do not edit this code manually.
+                 * Version: %P
+                 *
+                 * Generates a database model for the specified entity class.
+                 *
+                 * This method creates a Kotlin data class representing the database model,
+                 * including insert, select, update, and delete functions.
+                 *
+                 * @param element The element representing the database entity class.
+                 */
+            """.trimIndent(), version)
 
         kotlinFile.build().writeTo(processingEnv.filer)
     }
@@ -478,28 +502,57 @@ class DatabaseEntityProcessor : AbstractProcessor() {
      * @return A function specification for creating the database table.
      */
     private fun generateCreateTableFunction(
-        packageName: String,
-        className: String,
         tableName: String,
-        fields: List<Pair<PropertySpec, String>>
+        element: Element
     ): FunSpec {
-        val createTableQuery = StringBuilder("CREATE TABLE IF NOT EXISTS $tableName (")
-        createTableQuery.append(fields.joinToString(", ") {
-            "${it.first.name} ${it.second}"
-        })
-        createTableQuery.append(")")
+        val fields = element.enclosedElements.filter { it.kind == ElementKind.FIELD }
+        val fieldsSql = fields.joinToString(", ") { field ->
+            val fieldName = field.simpleName.toString()
+            val sqlType = field.getAnnotation(ColumnType::class.java)
+            val isPrimaryKey = field.getAnnotation(PrimaryKey::class.java) != null
+            val isUnique = field.getAnnotation(Unique::class.java) != null
+
+            val baseSqlType = sqlType?.type?.name ?: throw IllegalArgumentException("Field $fieldName must have a SQLType annotation")
+            val size = sqlType.size
+
+            val constraints = mutableListOf<String>()
+            if (isPrimaryKey) constraints.add("PRIMARY KEY")
+            if (isUnique) constraints.add("UNIQUE")
+
+            "$fieldName $baseSqlType($size) ${constraints.joinToString(" ")}".trim()
+        }
+
+        val sql = "CREATE TABLE $tableName ($fieldsSql)"
 
         val code = buildCodeBlock {
             addStatement("getConnection().use { connection ->")
-            addStatement("    val statement = connection.createStatement()")
-            addStatement("    statement.executeUpdate(%P)", createTableQuery.toString())
+
+            addStatement("  val meta = connection.metaData")
+            addStatement("  val resultSet: ResultSet = meta.getTables(null, null, \"$tableName\", null)")
+            beginControlFlow("if (!resultSet.next())")
+                addStatement("  connection.createStatement().use { statement ->")
+                    addStatement("  statement.executeUpdate(\"$sql\")")
+                addStatement("  }")
+            endControlFlow()
+
             addStatement("}")
         }
 
         return FunSpec.builder("createTable")
             .addCode(code)
+            .addComment("""
+                /**
+                 * This code was auto-generated, DO NOT EDIT THIS METHOD MANUALLY.
+                 *
+                 * Generates a create table function for the database model.
+                 *
+                 * @param className The name of the class to create the table for.
+                 * @param tableName The name of the database table.
+                 * @param fields The fields of the database model.
+                 * @return A function specification for creating the database table.
+                 */
+            """.trimIndent())
             .throws(SQLException::class)
             .build()
     }
-
 }
