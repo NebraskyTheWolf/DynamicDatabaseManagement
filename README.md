@@ -31,7 +31,7 @@ repositories {
     mavenCentral()
     maven {
         name = "GitHubPackages"
-        url = uri("https://maven.pkg.github.com/NebraskyTheWolf/kDDM")
+        url = uri("https://maven.pkg.github.com/aleroycz/kDDM")
         credentials {
             username = project.findProperty("github.actor") as String? ?: ""
             password = project.findProperty("github.token") as String? ?: ""
